@@ -18,6 +18,7 @@ package container
 
 import (
 	"fmt"
+	"net"
 	"hash/fnv"
 	"strings"
 
@@ -314,11 +315,26 @@ func MakePortMappings(container *v1.Container) (ports []PortMapping) {
 			HostIP:        p.HostIP,
 		}
 
+		// We need to determine the address family this entry applies to, We do this to ensure
+		// duplicate containerPort / protocol rules work accross different address families.
+		// https://github.com/kubernetes/kubernetes/issues/82373
+		familiy := "any"
+		if p.HostIP != "" {
+			hostIP := net.ParseIP(p.HostIP)
+			isHostV6 := (hostIP.To4() == nil)
+
+			if isHostV6 {
+				familiy = "v6"
+			} else {
+				familiy = "v4"
+			}
+		}
+
 		// We need to create some default port name if it's not specified, since
 		// this is necessary for rkt.
 		// http://issue.k8s.io/7710
 		if p.Name == "" {
-			pm.Name = fmt.Sprintf("%s-%s:%d", container.Name, p.Protocol, p.ContainerPort)
+			pm.Name = fmt.Sprintf("%s-%s-%s:%d", container.Name, familiy, p.Protocol, p.ContainerPort)
 		} else {
 			pm.Name = fmt.Sprintf("%s-%s", container.Name, p.Name)
 		}
